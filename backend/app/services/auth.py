@@ -57,12 +57,17 @@ async def require_api_key(
     if not tenant.is_active:
         raise _deny("This tenant is disabled.", status.HTTP_403_FORBIDDEN)
 
-    # Rate-limit hook (stub in Phase 2; Redis token bucket in Phase 5).
-    result = get_rate_limiter().allow(tenant)
+    # Rate-limit hook (Phase 5): Redis sliding-window log per API key.
+    result = await get_rate_limiter().allow(tenant)
     if not result.allowed:
-        raise _deny(
-            result.message or "Rate limit exceeded.",
-            status.HTTP_429_TOO_MANY_REQUESTS,
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=result.message or "Rate limit exceeded.",
+            headers=(
+                {"Retry-After": str(result.retry_after)}
+                if result.retry_after
+                else None
+            ),
         )
 
     return tenant

@@ -54,6 +54,11 @@ class Message(Base):
     was_answered: Mapped[bool | None] = mapped_column(nullable=True)
     confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
 
+    # Set (Phase 5) when a guardrail refused the turn; null otherwise.
+    guardrail_category: Mapped[str | None] = mapped_column(
+        String(100), nullable=True
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

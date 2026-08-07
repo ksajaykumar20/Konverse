@@ -17,6 +17,7 @@ class HistoryMessage(BaseModel):
     content: str
     was_answered: bool | None = None
     confidence: float | None = None
+    guardrail_category: str | None = None
     created_at: datetime
 
 

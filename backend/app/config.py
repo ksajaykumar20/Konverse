@@ -56,6 +56,18 @@ class Settings(BaseSettings):
     # Per-tenant query-embedding cache TTL (seconds). 24h.
     embedding_cache_ttl: int = 86400
 
+    # ----- Rate limiting (Phase 5) -----
+    # Sliding-window limits per plan: "plan=requests/window_seconds", comma-sep.
+    # e.g. free=10/60 means 10 requests per rolling 60s window.
+    rate_limits_csv: str = "free=10/60,pro=120/60,enterprise=1000/60"
+    # On a Redis error, allow the request rather than blackout the whole API.
+    rate_limit_fail_open: bool = True
+
+    # ----- Guardrails (Phase 5) -----
+    # Tiny classifier model used only when a keyword rule fires (escalation).
+    guardrail_classifier_model: str = "claude-sonnet-4-6"
+    guardrail_classifier_max_tokens: int = 24
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

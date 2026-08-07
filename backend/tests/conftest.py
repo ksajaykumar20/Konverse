@@ -44,3 +44,18 @@ async def client():
         yield c
 
     await engine.dispose()
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _allow_all_rate_limit():
+    """Default for every test: a no-op limiter so routes never touch Redis.
+
+    The sliding-window behaviour is exercised by direct unit tests (in
+    test_rate_limit.py with a fake Redis) so real Redis never leaks into the
+    shared HTTP client used across the suite.
+    """
+    from app.services import ratelimit
+
+    ratelimit.set_rate_limiter(ratelimit.AllowAllLimiter())
+    yield
+    ratelimit.set_rate_limiter(ratelimit.AllowAllLimiter())

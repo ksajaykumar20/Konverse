@@ -20,7 +20,7 @@ from app.db.session import get_db
 from app.models.tenant import Tenant
 from app.models.chat import ChatSession, Message
 from app.schemas.chat import ChatHistoryResponse, ChatRequest, HistoryMessage
-from app.services import llm, prompt, retrieval
+from app.services import guardrails, llm, prompt, retrieval
 from app.services.auth import require_api_key
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -53,11 +53,13 @@ async def _get_or_create_session(
 async def _log_message(
     db: AsyncSession, session: ChatSession, tenant: Tenant, *, role: str,
     content: str, was_answered: bool | None = None, confidence: float | None = None,
+    guardrail_category: str | None = None,
 ) -> None:
     db.add(
         Message(
             session_id=session.id, tenant_id=tenant.id, role=role, content=content,
             was_answered=was_answered, confidence=confidence,
+            guardrail_category=guardrail_category,
         )
     )
     await db.commit()
@@ -72,6 +74,27 @@ async def chat(
 ) -> StreamingResponse:
     _require_owner(tenant_id, current)
     settings = get_settings()
+
+    # Guardrails run BEFORE retrieval/LLM: a refusal never embeds, retrieves,
+    # or spends main-model tokens. Refusals still create a session and log both
+    # turns so the dashboard shows the blocked question with its category.
+    guard = await guardrails.check_guardrail(settings, current, body.message)
+    if guard.refused:
+        session = await _get_or_create_session(db, current, body)
+        await _log_message(db, session, current, role="user", content=body.message)
+        answer = guard.message
+        await _log_message(
+            db, session, current, role="assistant", content=answer,
+            was_answered=False, guardrail_category=guard.category,
+        )
+
+        async def _refusal_stream() -> str:
+            yield _sse({"type": "session", "session_id": str(session.id)})
+            yield _sse({"type": "guardrail", "category": guard.category})
+            yield _sse({"type": "token", "text": answer})
+            yield _sse({"type": "done", "text": answer, "was_answered": False})
+
+        return StreamingResponse(_refusal_stream(), media_type="text/event-stream")
 
     session = await _get_or_create_session(db, current, body)
     await _log_message(db, session, current, role="user", content=body.message)

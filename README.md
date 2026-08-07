@@ -5,8 +5,8 @@ own documents; end users get answers grounded **only** in that tenant's data via
 a Retrieval-Augmented Generation (RAG) pipeline. Built to scale from one demo
 tenant to many concurrent tenants and users without a rewrite.
 
-> **Phase status:** 4 of 8 — RAG retrieval + SSE streaming chat with caching
-> and a low-confidence fallback. See the bottom of this file for the roadmap.
+> **Phase status:** 5 of 8 — guardrails (regulated-industry interception) +
+> Redis rate limiting. See the bottom of this file for the roadmap.
 
 ---
 
@@ -252,6 +252,65 @@ call (one client per request) so nothing is pinned to a loop or process.
 
 ---
 
+## Phase 5 — guardrails + rate limiting
+
+### Guardrails (regulated-industry interception)
+A **hybrid** guard runs in the chat path **before** retrieval, based on the
+tenant's `guardrail_rules` JSON (default empty — a no-op for tenants that opt
+out). With guardrails enabled:
+- **Layer 1 (rules):** cheap keyword/phrase scan per category
+  (`medical_diagnosis`, `investment_advice`, …). Zero latency, zero tokens.
+- **Layer 2 (escalation):** when a rule fires, a tiny Claude classifier decides
+  *refuse* vs *pass* — so paraphrases and innocent keyword coincidences don't
+  block real questions. Missing key / classifier error → **refuses (safe)**.
+- **On refusal:** the API emits a `guardrail` SSE event (with `category`), a
+  fixed refusal message, and `done` with `was_answered=false`. The turn is
+  logged as a `Message` with `guardrail_category` set — no retrieval, no
+  embedding, no main-model token spend.
+
+Configure per tenant (via `PATCH /tenants/{id}`):
+```json
+{ "enabled": true, "categories": {
+  "medical_diagnosis": { "keywords": ["diagnose", "symptoms of", "my rash"], "enabled": true },
+  "investment_advice": { "keywords": ["buy this stock"], "enabled": true }
+} }
+```
+
+### Rate limiting (Redis sliding-window log)
+The Phase 2 stub is now a real limiter on the auth dependency (every protected
+route). No routers change.
+- **Sliding window log:** one Redis sorted set per limit key; on each request
+  purge entries older than the window, count survivors, and deny once the window
+  fills. No Redis module required.
+- **Keyed per API key hash** (`rl:{plan}:{api_key_hash}`) so each distinct key
+  has its own budget — one noisy key can't drain the whole tenant.
+- **Plan tiers** from `RATE_LIMITS_CSV` map to `rate_limit_plan`
+  (`free=10/60`, `pro=120/60`, `enterprise=1000/60`) — config-only, no migration.
+- **Fail-open:** a Redis outage allows requests by default
+  (`RATE_LIMIT_FAIL_OPEN=true`) rather than blackouting the API; `429` carries
+  a `Retry-After` header for well-behaved clients.
+
+### Local testing (no Docker)
+- **29 tests passing** across Phases 1–5. Rate limiting is tested against an
+  in-memory fake Redis; an `AllowAll` limiter keeps the shared HTTP client off
+  real Redis in the rest of the suite. Asserted: sliding-window allow-then-deny,
+  per-key isolation, fail-open, and the HTTP `429` + `Retry-After` path.
+- **Migrations:** `0002` adds `messages.guardrail_category`. Verify offline:
+  `alembic upgrade head --sql`. Run against Postgres when infra is up.
+
+### Live end-to-end (needs Postgres + Redis)
+```bash
+cd backend && .venv/Scripts/python -m alembic upgrade head     # apply 0002
+# PATCH a tenant's guardrail_rules (above), then send a guarded question:
+curl -sN -X POST localhost:8000/api/chat/<tenant_id> \
+  -H 'X-API-Key: <api_key>' -H 'Content-Type: application/json' \
+  -d '{"message":"please diagnose my rash"}'
+# -> SSE: a `guardrail` event, refusal message, was_answered=false.
+# Hammer the same key 11+ times quickly (free plan) -> HTTP 429 + Retry-After.
+```
+
+---
+
 ## Config reference
 
 All env vars are documented in [`.env.example`](.env.example). Key ones:
@@ -263,7 +322,9 @@ All env vars are documented in [`.env.example`](.env.example). Key ones:
 | `QDRANT_URL` | vector store | Phase 3 |
 | `CELERY_BROKER_URL` / `CELERY_RESULT_BACKEND` | Celery on Redis | Phase 3 |
 | `OPENAI_API_KEY` | embeddings | Phase 3 |
-| `ANTHROPIC_API_KEY` | LLM (claude-sonnet-4-6) | Phase 4 |
+| `ANTHROPIC_API_KEY` | LLM + guardrail classifier | Phases 4–5 |
+| `RATE_LIMITS_CSV` / `RATE_LIMIT_FAIL_OPEN` | sliding-window limits | Phase 5 |
+| `GUARDRAIL_CLASSIFIER_MODEL` / `_MAX_TOKENS` | guardrail escalation | Phase 5 |
 
 ---
 
@@ -273,7 +334,7 @@ All env vars are documented in [`.env.example`](.env.example). Key ones:
 2. ✅ Database schema + tenant management (SQLAlchemy, Alembic, API-key auth)
 3. ✅ Document ingestion pipeline (async, Celery: parse → chunk → embed → Qdrant)
 4. ✅ Retrieval + Chat (RAG) with SSE streaming, caching, low-confidence fallback
-5. Guardrails (regulated-industry interception) + Redis rate limiting
+5. ✅ Guardrails (regulated-industry interception) + Redis rate limiting
 6. Dashboard (Next.js + shadcn/ui)
 7. Embeddable vanilla-JS chat widget
 8. End-to-end validation (2 demo tenants + light concurrent load check)
