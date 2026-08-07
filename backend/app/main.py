@@ -14,7 +14,8 @@ from fastapi import FastAPI
 
 from app.config import Settings, get_settings
 from app.lib.logging import setup_logging
-from app.routers import health
+from app.routers import health, tenants
+import app.models  # noqa: F401  (register all tables on Base.metadata)
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -40,6 +41,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return await call_next(request)
 
     app.include_router(health.router, prefix="/api")
+    app.include_router(tenants.router, prefix="/api")
 
     return app
 

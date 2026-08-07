@@ -107,6 +107,51 @@ r.get(timeout=5)          # -> 5  (wait: worker consumed and executed)
 
 ---
 
+## Phase 2 — tenants & auth
+
+**Schema** (SQLAlchemy + Alembic, Postgres-targeted): `tenants`, `documents`,
+`chat_sessions`, `messages`. UUID PKs throughout; every tenant-scoped row carries
+a denormalized `tenant_id` FK + index for cheap per-tenant queries and clean
+Qdrant shard-by-tenant later.
+
+**API** (all under `/api`):
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| POST | `/tenants` | none | create a tenant, returns `api_key` **once** |
+| GET | `/tenants/me` | `X-API-Key` | current tenant config |
+| GET | `/tenants/{id}` | `X-API-Key` | own tenant; others → 404 |
+| PATCH | `/tenants/{id}` | `X-API-Key` | update name/industry/system_prompt/guardrails/plan |
+
+Keys are long random `sk_...` tokens; only their **sha256 hash** is stored, so a
+DB leak yields no usable credentials. The API-key dependency already calls a
+`RateLimiter` hook (a no-op stub now) so Phase 5 drops in Redis token-bucket
+limiting without touching routers.
+
+### Run the migration (needs Postgres)
+```bash
+cp .env.example .env            # ensure DATABASE_URL points at Postgres
+docker compose up -d db         # or your local Postgres
+cd backend
+.venv/Scripts/python -m alembic upgrade head
+```
+**Verify the migration SQL offline** (no DB needed):
+```bash
+.venv/Scripts/python -m alembic upgrade head --sql
+```
+
+### Curl smoke test (once DB is up)
+```bash
+curl -s -X POST localhost:8000/api/tenants \
+  -H 'Content-Type: application/json' -d '{"name":"Acme","industry":"ecommerce"}'
+```
+Save the returned `api_key`, then:
+```bash
+curl -s localhost:8000/api/tenants/me -H 'X-API-Key: <api_key>'
+```
+
+---
+
 ## Config reference
 
 All env vars are documented in [`.env.example`](.env.example). Key ones:
