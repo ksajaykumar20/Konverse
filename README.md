@@ -5,8 +5,10 @@ own documents; end users get answers grounded **only** in that tenant's data via
 a Retrieval-Augmented Generation (RAG) pipeline. Built to scale from one demo
 tenant to many concurrent tenants and users without a rewrite.
 
-> **Phase status:** 6 of 8 — Next.js dashboard (documents, chat, sessions).
-> See the bottom of this file for the roadmap.
+> **Phase status:** 8 of 8 (plus a platform Admin console). See the bottom of
+> this file for the roadmap. The dashboard ships two faces: a per-tenant
+> operator console (`/documents`, `/chat`, `/sessions`) and a platform admin
+> console at `/admin` for managing all tenants.
 
 ---
 
@@ -346,6 +348,22 @@ npm run dev                 # http://localhost:3000
 Sign in with a tenant's `X-API-Key`. Live data needs the backend + infra up;
 `npm run build && npm start` serves the production build.
 
+### Admin console
+
+A separate platform-operator console lives at `/admin` (login with the
+`ADMIN_API_KEY` set on the backend). It manages **all** tenants:
+
+- **List** all tenants with live usage counts, search and status filter.
+- **Onboard** tenants (create) — the API key is shown exactly once.
+- **Edit** profile: plan, industry, system prompt, guardrail rules.
+- **Enable / disable** (soft, reversible) and **rotate** API keys.
+- **Hard delete** — purge Qdrant vectors + storage + the DB row (child rows
+  cascade). Requires an explicit `?confirm=hard` and a browser confirmation.
+
+Backend endpoints live under `/api/admin/*` and are gated by the `X-Admin-Key`
+header (constant-time compare). When `ADMIN_API_KEY` is unset they return 503,
+so an unconfigured deployment can't expose a wide-open console.
+
 ### Embed the chat widget
 
 The backend serves the widget at `/static/widget.js` and allows CORS for
@@ -385,6 +403,7 @@ All env vars are documented in [`.env.example`](.env.example). Key ones:
 | `RATE_LIMITS_CSV` / `RATE_LIMIT_FAIL_OPEN` | sliding-window limits | Phase 5 |
 | `GUARDRAIL_CLASSIFIER_MODEL` / `_MAX_TOKENS` | guardrail escalation | Phase 5 |
 | `CORS_ORIGINS` | allowed origins for browser installs / widget | Phase 7 |
+| `ADMIN_API_KEY` | platform operator key for `/api/admin/*` (empty = disabled) | Admin console |
 
 ---
 
@@ -397,5 +416,6 @@ All env vars are documented in [`.env.example`](.env.example). Key ones:
 5. ✅ Guardrails (regulated-industry interception) + Redis rate limiting
 6. ✅ Dashboard (Next.js + shadcn/ui)
 7. ✅ Embeddable vanilla-JS chat widget (CORS + `/static/widget.js`)
-8. ✅ End-to-end validation (`backend/scripts/validate_e2e.py` + `concurrency_check.py`)
-   _Optional:_ 9. LangGraph agentic tool use · 10. Production scale-out
+8. ✅ End-to-end validation (`scripts/validate_e2e.py` + `concurrency_check.py`)
+9. ✅ Platform Admin console — all-tenant management (`/admin` + `/api/admin/*`)
+   _Optional:_ 10. LangGraph agentic tool use · 11. Production scale-out

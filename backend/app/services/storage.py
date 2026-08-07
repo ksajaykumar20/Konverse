@@ -30,3 +30,19 @@ def save_upload(data: bytes, original_filename: str) -> str:
 def read_upload(rel_path: str) -> bytes:
     """Read back a stored file by its relative path."""
     return (_base_dir() / rel_path).read_bytes()
+
+
+def delete_document(rel_path: str | None) -> None:
+    """Remove a stored document by its relative path.
+
+    Missing files are ignored (idempotent) so purging a tenant whose file was
+    already removed doesn't raise.
+    """
+    if not rel_path:
+        return
+    try:
+        (_base_dir() / rel_path).unlink(missing_ok=True)
+    except OSError:
+        # A path that escapes storage_dir would raise; swallow so a single
+        # bad file doesn't abort an admin purge mid-way.
+        pass

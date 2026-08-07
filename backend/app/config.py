@@ -16,6 +16,12 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8000
 
+    # ----- Platform admin (admin console) -----
+    # The platform operator's key, presented as the X-Admin-Key header to
+    # /api/admin/*. If empty, admin endpoints return 503 (disabled) rather than
+    # silently opening a wide-open console. Keep separate from tenant API keys.
+    admin_api_key: str = ""
+
     # ----- PostgreSQL (SQLAlchemy async engine URL) -----
     database_url: str = (
         "postgresql+asyncpg://konverse:konverse@localhost:5432/konverse"

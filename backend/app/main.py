@@ -16,7 +16,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import Settings, get_settings
 from app.lib.logging import setup_logging
-from app.routers import chat, health, ingest, tenants
+from app.routers import admin, chat, health, ingest, tenants
 import app.models  # noqa: F401  (register all tables on Base.metadata)
 
 
@@ -46,6 +46,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(tenants.router, prefix="/api")
     app.include_router(ingest.router, prefix="/api")
     app.include_router(chat.router, prefix="/api")
+    app.include_router(admin.router, prefix="/api")
 
     # CORS for browser installs (the Phase 7 embeddable widget fetches the
     # backend directly from a tenant page, including the X-API-Key header).

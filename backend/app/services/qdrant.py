@@ -7,7 +7,15 @@ multi-tenancy correct while letting the collection scale to a Qdrant cluster.
 import uuid
 
 from qdrant_client import AsyncQdrantClient
-from qdrant_client.models import Distance, PointStruct, VectorParams
+from qdrant_client.models import (
+    Distance,
+    FieldCondition,
+    Filter,
+    FilterSelector,
+    MatchValue,
+    PointStruct,
+    VectorParams,
+)
 
 from app.config import Settings
 
@@ -62,6 +70,30 @@ async def upsert_document_vectors(
     try:
         await client.upsert(
             collection_name=settings.qdrant_collection, points=points
+        )
+    finally:
+        await client.close()
+
+
+async def delete_tenant_points(settings: Settings, tenant_id: str) -> None:
+    """Delete every vector owned by a tenant. Used by admin hard-delete.
+
+    Qdrant deletions are filtered by the `tenant_id` payload field (the same
+    key retrieval filters on), so only that tenant's points are removed.
+    """
+    client = _client(settings)
+    try:
+        await client.delete(
+            collection_name=settings.qdrant_collection,
+            points_selector=FilterSelector(
+                filter=Filter(
+                    must=[
+                        FieldCondition(
+                            key="tenant_id", match=MatchValue(value=tenant_id)
+                        )
+                    ]
+                )
+            ),
         )
     finally:
         await client.close()

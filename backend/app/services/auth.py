@@ -15,6 +15,7 @@ from fastapi import Depends, Header, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
 from app.db.session import get_db
 from app.models.tenant import Tenant
 from app.services.ratelimit import get_rate_limiter
@@ -71,3 +72,28 @@ async def require_api_key(
         )
 
     return tenant
+
+
+async def require_admin(
+    x_admin_key: str = Header(None, alias="X-Admin-Key"),
+) -> bool:
+    """Dependency: authenticate the platform operator via the X-Admin-Key header.
+
+    Compares against `ADMIN_API_KEY` in constant time. When the key is unset the
+    admin API is disabled (503) so an unconfigured deployment never exposes a
+    wide-open console. Admin ops are intentionally not rate-limited — the
+    operator is a single, trusted actor.
+    """
+    settings = get_settings()
+    if not settings.admin_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Admin API is not configured (set ADMIN_API_KEY).",
+        )
+    if not x_admin_key or not secrets.compare_digest(
+        x_admin_key, settings.admin_api_key
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid admin key."
+        )
+    return True

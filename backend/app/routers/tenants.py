@@ -1,41 +1,25 @@
-"""Tenant management endpoints.
+"""Tenant management endpoints (public, self-serve + peer operations).
 
 POST /tenants            — public, returns the api_key exactly once
 GET  /tenants/me         — current tenant (from X-API-Key)
 GET  /tenants/{id}       — auth-locked; only the owner reads its own tenant
 PATCH /tenants/{id}      — auth-locked; owner updates its own tenant
+
+Platform-wide list/detail/delete/regenerate live in the admin router
+(/api/admin) and share the same tenant service as this router.
 """
-import re
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
 from app.models.tenant import Tenant
-from app.schemas.tenant import (
-    TenantCreate,
-    TenantCreateResponse,
-    TenantRead,
-    TenantUpdate,
-)
-from app.services.auth import generate_api_key, hash_api_key, require_api_key
+from app.schemas.tenant import TenantCreate, TenantCreateResponse, TenantRead, TenantUpdate
+from app.services.auth import require_api_key
+from app.services import tenants as tenant_svc
 
 router = APIRouter(prefix="/tenants", tags=["tenants"])
-
-
-def _slugify(name: str) -> str:
-    slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
-    return slug or "tenant"
-
-
-async def _unique_slug(db: AsyncSession, slug: str) -> str:
-    """Return `slug` guaranteed unique in the table."""
-    candidate = slug
-    if not await db.scalar(select(Tenant.id).where(Tenant.slug == candidate)):
-        return candidate
-    return f"{slug}-{uuid.uuid4().hex[:8]}"
 
 
 async def _get_owned_tenant(
@@ -56,27 +40,7 @@ async def _get_owned_tenant(
 async def create_tenant(
     payload: TenantCreate, db: AsyncSession = Depends(get_db)
 ) -> TenantCreateResponse:
-    slug = await _unique_slug(db, payload.slug or _slugify(payload.name))
-
-    key = generate_api_key()
-    tenant = Tenant(
-        name=payload.name,
-        slug=slug,
-        industry=payload.industry,
-        api_key_hash=hash_api_key(key),
-        system_prompt=payload.system_prompt or "",
-        rate_limit_plan=payload.rate_limit_plan or "free",
-    )
-    db.add(tenant)
-    try:
-        await db.commit()
-    except Exception:
-        await db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail="Could not create tenant"
-        ) from None
-    await db.refresh(tenant)
-
+    tenant, key = await tenant_svc.create_tenant(db, payload)
     return TenantCreateResponse(
         id=tenant.id,
         name=tenant.name,
@@ -111,11 +75,6 @@ async def update_tenant(
     current: Tenant = Depends(require_api_key),
 ) -> Tenant:
     await _get_owned_tenant(tenant_id, current, db)
-
-    changes = payload.model_dump(exclude_unset=True)
-    for field, value in changes.items():
-        setattr(current, field, value)
-
-    await db.commit()
+    await tenant_svc.update_tenant(db, current, payload)
     await db.refresh(current)
     return current
