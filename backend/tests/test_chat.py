@@ -35,6 +35,49 @@ def _events(text: str) -> list[dict]:
     return out
 
 
+# --- sessions list -----------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_sessions_list_excludes_foreign_tenants(client, monkeypatch):
+    a = await _create_tenant(client, "SessA")
+    b = await _create_tenant(client, "SessB")
+
+    async def fake_retrieve(settings, tenant_id, query):
+        return RetrievalResult(
+            chunks=[{"text": "c", "score": 0.9}], max_score=0.9
+        )
+
+    async def fake_stream(settings, system_prompt, user_message):
+        yield "hi"
+
+    monkeypatch.setattr("app.services.retrieval.retrieve", fake_retrieve)
+    monkeypatch.setattr("app.services.llm.stream_answer", fake_stream)
+
+    # A asks -> A gets a session.
+    for _ in range(2):
+        await client.post(
+            f"/api/chat/{a['id']}",
+            headers={API_KEY: a["api_key"]},
+            json={"message": "hello"},
+        )
+    # B asks nothing.
+
+    ok = await client.get(
+        f"/api/chat/{a['id']}/sessions", headers={API_KEY: a["api_key"]}
+    )
+    assert ok.status_code == 200
+    sessions = ok.json()["sessions"]
+    assert len(sessions) == 2
+    assert all(s["message_count"] >= 2 for s in sessions)
+
+    # A's sessions are invisible (404) to B.
+    foreign = await client.get(
+        f"/api/chat/{a['id']}/sessions", headers={API_KEY: b["api_key"]}
+    )
+    assert foreign.status_code == 404
+
+
 # --- retrieved context grounds & streams, then logs -------------------------
 
 

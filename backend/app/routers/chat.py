@@ -12,14 +12,20 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.db.session import get_db
 from app.models.tenant import Tenant
 from app.models.chat import ChatSession, Message
-from app.schemas.chat import ChatHistoryResponse, ChatRequest, HistoryMessage
+from app.schemas.chat import (
+    ChatHistoryResponse,
+    ChatRequest,
+    ChatSessionsResponse,
+    HistoryMessage,
+    SessionSummary,
+)
 from app.services import guardrails, llm, prompt, retrieval
 from app.services.auth import require_api_key
 
@@ -156,3 +162,46 @@ async def chat_history(
         session_id=session.id,
         messages=[HistoryMessage.model_validate(m) for m in rows],
     )
+
+
+@router.get("/{tenant_id}/sessions", response_model=ChatSessionsResponse)
+async def chat_sessions(
+    tenant_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current: Tenant = Depends(require_api_key),
+) -> ChatSessionsResponse:
+    """List the tenant's recent sessions (most recently updated first).
+
+    Populates the dashboard Sessions screen. N+1 message count is fine at this
+    scale; if a tenant accumulates many sessions, batch-count later.
+    """
+    _require_owner(tenant_id, current)
+    rows = await db.execute(
+        select(
+            ChatSession.id,
+            ChatSession.title,
+            ChatSession.created_at,
+            ChatSession.updated_at,
+        )
+        .where(ChatSession.tenant_id == current.id)
+        .order_by(ChatSession.updated_at.desc())
+        .limit(50)
+    )
+
+    sessions: list[SessionSummary] = []
+    for session_id, title, created_at, updated_at in rows:
+        count = await db.scalar(
+            select(func.count())
+            .select_from(Message)
+            .where(Message.session_id == session_id)
+        )
+        sessions.append(
+            SessionSummary(
+                id=session_id,
+                title=title,
+                created_at=created_at,
+                updated_at=updated_at,
+                message_count=int(count or 0),
+            )
+        )
+    return ChatSessionsResponse(sessions=sessions)

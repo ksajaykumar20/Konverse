@@ -5,8 +5,8 @@ own documents; end users get answers grounded **only** in that tenant's data via
 a Retrieval-Augmented Generation (RAG) pipeline. Built to scale from one demo
 tenant to many concurrent tenants and users without a rewrite.
 
-> **Phase status:** 5 of 8 — guardrails (regulated-industry interception) +
-> Redis rate limiting. See the bottom of this file for the roadmap.
+> **Phase status:** 6 of 8 — Next.js dashboard (documents, chat, sessions).
+> See the bottom of this file for the roadmap.
 
 ---
 
@@ -311,6 +311,43 @@ curl -sN -X POST localhost:8000/api/chat/<tenant_id> \
 
 ---
 
+## Phase 6 — dashboard (Next.js + shadcn/ui)
+
+A tenant operator console in `dashboard/` (Next.js App Router, TypeScript,
+Tailwind + shadcn-style components). It talks to the backend **only through its
+own Next server**, so the tenant's API key never reaches the browser.
+
+**Security model (server-side key):**
+- Login (`/login`) verifies the `X-API-Key` against `GET /api/tenants/me`, then
+  signs it into an **HttpOnly** session cookie (`jose`, HS256, 12h).
+- A generic Route Handler proxy (`/api/b/<path>` → `{BACKEND_URL}/api/<path>`)
+  attaches the key server-side and **streams SSE** for the chat endpoint.
+- `proxy.ts` (Next's proxy convention) guards `/documents`, `/chat`,
+  `/sessions`, `/login` by cookie presence; the proxy handler re-verifies the
+  JWT, so the cookie check is cosmetic — not the security boundary.
+
+**Screens:**
+| Route | Purpose |
+|---|---|
+| `/documents` | list uploads + `processing/indexed/failed` badges, upload control, auto-poll while processing |
+| `/chat` | grounded streaming playground (token-by-token via SSE), surfaces `was_answered` + `guardrail` refusals |
+| `/sessions` | recent sessions (expandable transcripts with confidence / guardrail flags) |
+
+**Backend addition:** `GET /api/chat/{tenant_id}/sessions` lists recent
+sessions (id, title, message count) — the Sessions screen's data source.
+
+### Run the dashboard
+```bash
+cd dashboard
+cp .env.example .env        # set BACKEND_URL=http://localhost:8000 and SESSION_SECRET
+npm install
+npm run dev                 # http://localhost:3000
+```
+Sign in with a tenant's `X-API-Key`. Live data needs the backend + infra up;
+`npm run build && npm start` serves the production build.
+
+---
+
 ## Config reference
 
 All env vars are documented in [`.env.example`](.env.example). Key ones:
@@ -335,7 +372,7 @@ All env vars are documented in [`.env.example`](.env.example). Key ones:
 3. ✅ Document ingestion pipeline (async, Celery: parse → chunk → embed → Qdrant)
 4. ✅ Retrieval + Chat (RAG) with SSE streaming, caching, low-confidence fallback
 5. ✅ Guardrails (regulated-industry interception) + Redis rate limiting
-6. Dashboard (Next.js + shadcn/ui)
+6. ✅ Dashboard (Next.js + shadcn/ui)
 7. Embeddable vanilla-JS chat widget
 8. End-to-end validation (2 demo tenants + light concurrent load check)
    _Optional:_ 9. LangGraph agentic tool use · 10. Production scale-out

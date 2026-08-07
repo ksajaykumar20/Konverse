@@ -1,0 +1,11 @@
+# deps / build
+/node_modules
+/.next
+/out
+next-env.d.ts
+*.tsbuildinfo
+
+# env & local
+.env
+.env.local
+.env*.local

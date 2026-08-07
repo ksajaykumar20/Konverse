@@ -24,3 +24,17 @@ class HistoryMessage(BaseModel):
 class ChatHistoryResponse(BaseModel):
     session_id: uuid.UUID
     messages: list[HistoryMessage]
+
+
+class SessionSummary(BaseModel):
+    """One chat session row for the dashboard's Sessions screen."""
+
+    id: uuid.UUID
+    title: str | None
+    created_at: datetime
+    updated_at: datetime
+    message_count: int
+
+
+class ChatSessionsResponse(BaseModel):
+    sessions: list[SessionSummary]
