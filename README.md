@@ -395,5 +395,5 @@ All env vars are documented in [`.env.example`](.env.example). Key ones:
 5. ✅ Guardrails (regulated-industry interception) + Redis rate limiting
 6. ✅ Dashboard (Next.js + shadcn/ui)
 7. ✅ Embeddable vanilla-JS chat widget (CORS + `/static/widget.js`)
-8. End-to-end validation (2 demo tenants + light concurrent load check)
+8. ✅ End-to-end validation (`backend/scripts/validate_e2e.py` + `concurrency_check.py`)
    _Optional:_ 9. LangGraph agentic tool use · 10. Production scale-out
