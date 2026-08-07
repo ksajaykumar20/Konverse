@@ -41,9 +41,16 @@ class Settings(BaseSettings):
     # only the key in `documents.storage_path`. No schema change required.
     storage_dir: str = "./storage"
 
-    # ----- Vector sizing / embedding (Phase 3) -----
-    embedding_model: str = "text-embedding-3-small"
-    embedding_size: int = 1536  # matches text-embedding-3-small
+    # ----- Vector sizing / embedding (Phase 3; backend pluggable from Phase 8) -----
+    # Backend: "tei" (default — an OpenAI-compatible TEI/HF endpoint) or
+    # "openai" (fallback). The model string is the model the backend serves;
+    # embedding_size must match that model's output dimension (Qdrant collection
+    # dimension is fixed at creation, so changing model usually means a new
+    # collection + re-ingest — see README).
+    embedding_backend: str = "tei"
+    tei_url: str = "http://localhost:8080"  # TEI / OpenAI-compatible endpoint
+    embedding_model: str = "BAAI/bge-base-en-v1.5"
+    embedding_size: int = 768  # matches bge-base-en-v1.5 (768-d)
 
     # ----- LLM / retrieval (Phase 4) -----
     anthropic_model: str = "claude-sonnet-4-6"

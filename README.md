@@ -378,7 +378,9 @@ All env vars are documented in [`.env.example`](.env.example). Key ones:
 | `REDIS_URL` | cache + rate limiting | Phases 4–5 |
 | `QDRANT_URL` | vector store | Phase 3 |
 | `CELERY_BROKER_URL` / `CELERY_RESULT_BACKEND` | Celery on Redis | Phase 3 |
-| `OPENAI_API_KEY` | embeddings | Phase 3 |
+| `EMBEDDING_BACKEND` / `TEI_URL` | embeddings (TEI default, OpenAI fallback) | Phase 3/8 |
+| `EMBEDDING_MODEL` / `EMBEDDING_SIZE` | model + dimension (Qdrant collection is fixed at creation) | Phase 3/8 |
+| `OPENAI_API_KEY` | LLM + embeddings fallback | Phases 3–4 |
 | `ANTHROPIC_API_KEY` | LLM + guardrail classifier | Phases 4–5 |
 | `RATE_LIMITS_CSV` / `RATE_LIMIT_FAIL_OPEN` | sliding-window limits | Phase 5 |
 | `GUARDRAIL_CLASSIFIER_MODEL` / `_MAX_TOKENS` | guardrail escalation | Phase 5 |

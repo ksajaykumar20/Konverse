@@ -27,7 +27,9 @@ async def _embed_query(
     cached = await cache.get_cached_embedding(settings, tenant_id, query)
     if cached is not None:
         return cached
-    vector = (await embeddings.embed_texts(settings, [query]))[0]
+    # query=True applies the bge query-side instruction prefix, matching how
+    # bge-family models rank documents during training.
+    vector = (await embeddings.embed_texts(settings, [query], query=True))[0]
     await cache.set_cached_embedding(settings, tenant_id, query, vector)
     return vector
 
