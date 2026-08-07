@@ -68,6 +68,12 @@ class Settings(BaseSettings):
     guardrail_classifier_model: str = "claude-sonnet-4-6"
     guardrail_classifier_max_tokens: int = 24
 
+    # ----- CORS / embeddable widget (Phase 7) -----
+    # Comma-separated allowed origins for browser installs ("" = none, "*" =
+    # allow all — dev default). In production set this to the real origins that
+    # embed the widget so a tenant page must be explicitly allow-listed.
+    cors_origins: str = "*"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

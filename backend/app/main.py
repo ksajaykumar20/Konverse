@@ -8,8 +8,11 @@ Philosophy (applies from Phase 1 through production):
     (pooled) clients here, still without blocking startup.
 """
 import uuid
+from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.config import Settings, get_settings
 from app.lib.logging import setup_logging
@@ -44,7 +47,36 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(ingest.router, prefix="/api")
     app.include_router(chat.router, prefix="/api")
 
+    # CORS for browser installs (the Phase 7 embeddable widget fetches the
+    # backend directly from a tenant page, including the X-API-Key header).
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_cors_origins(settings),
+        allow_methods=["*"],
+        allow_headers=["*"],
+        allow_credentials=False,  # "*" origins + credentials are mutually exclusive
+    )
+
+    # Serve the embeddable widget from /static/widget.js. Mount is optional so
+    # the app still imports when the repo is laid out differently.
+    widget_dir = _widget_dir()
+    if widget_dir and widget_dir.is_dir():
+        app.mount("/static", StaticFiles(directory=str(widget_dir)), name="static")
+
     return app
+
+
+def _widget_dir() -> Path | None:
+    # <repo>/widget (main.py lives at <repo>/backend/app/main.py).
+    return Path(__file__).resolve().parents[2] / "widget"
+
+
+def _cors_origins(settings: Settings) -> list[str]:
+    """Parse cors_origins CSV into a list of origins ("*" passed through)."""
+    if not settings.cors_origins:
+        return []
+    parts = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
+    return parts
 
 
 app = create_app()

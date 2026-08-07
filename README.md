@@ -346,6 +346,26 @@ npm run dev                 # http://localhost:3000
 Sign in with a tenant's `X-API-Key`. Live data needs the backend + infra up;
 `npm run build && npm start` serves the production build.
 
+### Embed the chat widget
+
+The backend serves the widget at `/static/widget.js` and allows CORS for
+browser installs. Drop it on any tenant page:
+
+```html
+<script src="https://<backend-host>/static/widget.js"></script>
+<script>
+  Konverse.init({ tenantId: "…", apiKey: "sk_…", baseUrl: "https://<backend-host>", title: "Support" });
+</script>
+```
+
+It mounts a floating bubble (Shadow DOM — host-page CSS can't leak in) and
+streams answers token-by-token. Interactive demo: backend `widget/demo.html`
+(open it beside a running backend and fill in a tenant ID + API key).
+
+> **Key-in-browser is a POC convenience.** For production, exhange a tenant API
+> key server-side for a short-lived, origin-scoped widget token so end users
+> never see the raw key (see Phase 10 scale-out notes).
+
 ---
 
 ## Config reference
@@ -362,6 +382,7 @@ All env vars are documented in [`.env.example`](.env.example). Key ones:
 | `ANTHROPIC_API_KEY` | LLM + guardrail classifier | Phases 4–5 |
 | `RATE_LIMITS_CSV` / `RATE_LIMIT_FAIL_OPEN` | sliding-window limits | Phase 5 |
 | `GUARDRAIL_CLASSIFIER_MODEL` / `_MAX_TOKENS` | guardrail escalation | Phase 5 |
+| `CORS_ORIGINS` | allowed origins for browser installs / widget | Phase 7 |
 
 ---
 
@@ -373,6 +394,6 @@ All env vars are documented in [`.env.example`](.env.example). Key ones:
 4. ✅ Retrieval + Chat (RAG) with SSE streaming, caching, low-confidence fallback
 5. ✅ Guardrails (regulated-industry interception) + Redis rate limiting
 6. ✅ Dashboard (Next.js + shadcn/ui)
-7. Embeddable vanilla-JS chat widget
+7. ✅ Embeddable vanilla-JS chat widget (CORS + `/static/widget.js`)
 8. End-to-end validation (2 demo tenants + light concurrent load check)
    _Optional:_ 9. LangGraph agentic tool use · 10. Production scale-out
