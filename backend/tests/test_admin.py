@@ -27,10 +27,26 @@ async def _mk_tenant(client, name="Acme Co"):
 
 
 @pytest.mark.asyncio
-async def test_admin_disabled_when_no_key(client):
-    # get_settings defaults to admin_api_key="".
+async def test_admin_disabled_when_no_key(client, monkeypatch):
+    # Pin an empty key explicitly so this is hermetic even if a real
+    # backend/.env (with ADMIN_API_KEY) exists in the working directory.
+    monkeypatch.setattr(
+        "app.services.auth.get_settings", lambda: Settings(admin_api_key="")
+    )
     r = await client.get("/api/admin/tenants")
     assert r.status_code == 503
+
+
+@pytest.mark.asyncio
+async def test_admin_verify_is_db_free(client, monkeypatch):
+    """/verify validates the key without touching the DB, so login works even
+    with Postgres down."""
+    _enable_admin(monkeypatch)
+    # wrong key -> 401
+    assert (await client.get("/api/admin/verify", headers={"X-Admin-Key": "nope"})).status_code == 401
+    # correct key -> 200 (no DB hit required)
+    r = await client.get("/api/admin/verify", headers=ADMIN)
+    assert r.status_code == 200 and r.json()["admin"] is True
 
 
 @pytest.mark.asyncio

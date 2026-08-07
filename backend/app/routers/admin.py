@@ -67,6 +67,13 @@ async def _with_usage(db: AsyncSession, tenant: Tenant) -> dict:
     }
 
 
+@router.get("/verify")
+async def admin_verify(_admin: bool = Depends(require_admin)):
+    """Key-only check — no DB touch. Lets the dashboard validate the admin key
+    (and stay logged in) even when the data layer is down."""
+    return {"admin": True}
+
+
 @router.get("/tenants")
 async def admin_list_tenants(
     q: str | None = None,

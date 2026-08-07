@@ -21,9 +21,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Missing admin key" }, { status: 400 });
   }
 
-  // Validate the key against the backend BEFORE minting a session. A failing
-  // check means either wrong key (401) or admin disabled server-side (503).
-  const backend = await fetch(`${backendBase()}/api/admin/tenants`, {
+  // Validate the key against the backend BEFORE minting a session. We hit the
+  // DB-free /verify endpoint so login doesn't depend on Postgres being up
+  // (a data-layer outage would otherwise surface as a false "invalid key").
+  const backend = await fetch(`${backendBase()}/api/admin/verify`, {
     headers: { "X-Admin-Key": admin_key },
     cache: "no-store",
   });
