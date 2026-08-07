@@ -1,0 +1,57 @@
+# ---------------------------------------------------------------------------
+# Konverse root .gitignore.
+# Rule of thumb: ignore anything generated, environmental, or cached — never
+# ignore source you wrote. Verify with:  git ls-files --others --exclude-standard
+# ---------------------------------------------------------------------------
+
+# --- Secrets (NEVER commit) ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+.venv/
+venv/
+env/
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+*.log
+
+# --- Node / Next.js / TypeScript ---
+node_modules/
+**/node_modules/
+.next/
+**/.next/
+out/
+**/out/
+dist/
+**/dist/
+build/
+**/build/
+*.tsbuildinfo
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# --- IDE / editor ---
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# --- Local tooling / OS ---
+*.local
+.DS_Store
+desktop.ini

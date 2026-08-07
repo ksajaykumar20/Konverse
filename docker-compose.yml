@@ -1,0 +1,92 @@
+# ---------------------------------------------------------------------------
+# Konverse local dev orchestration.
+#
+#   docker compose up --build          # full stack
+#   docker compose up backend db qdrant redis   # API + infra, no worker
+#
+# backend and celery-worker share one image (backend/Dockerfile); they differ
+# only in start command -> both scale horizontally and independently.
+# ---------------------------------------------------------------------------
+name: konverse
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: konverse
+      POSTGRES_PASSWORD: konverse
+      POSTGRES_DB: konverse
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U konverse"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports:
+      - "6333:6333"   # REST / gRPC. (6334 is the gRPC port if needed)
+    volumes:
+      - qdrantdata:/qdrant/storage
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    image: konverse-backend:local
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    env_file: .env
+    environment:
+      # Container-internal URLs (override whatever .env has for localhost).
+      DATABASE_URL: postgresql+asyncpg://konverse:konverse@db:5432/konverse
+      REDIS_URL: redis://redis:6379/0
+      QDRANT_URL: http://qdrant:6333
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app          # live-reload source in dev
+    depends_on:
+      db: { condition: service_healthy }
+      qdrant: { condition: service_healthy }
+      redis: { condition: service_healthy }
+
+  celery-worker:
+    build:
+      context: ./backend
+    image: konverse-backend:local
+    command: celery -A app.worker.celery_app.celery_app worker --loglevel=info
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://konverse:konverse@db:5432/konverse
+      REDIS_URL: redis://redis:6379/0
+      QDRANT_URL: http://qdrant:6333
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+    volumes:
+      - ./backend:/app
+    depends_on:
+      redis: { condition: service_healthy }
+
+volumes:
+  pgdata:
+  qdrantdata:
