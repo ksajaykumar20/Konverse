@@ -152,6 +152,49 @@ curl -s localhost:8000/api/tenants/me -H 'X-API-Key: <api_key>'
 
 ---
 
+## Phase 3 — document ingestion (async via Celery)
+
+Uploads never block the API: the request saves the file and enqueues a Celery
+job, and an independent worker extracts → chunks → embeds → upserts to Qdrant.
+
+**Pipeline:** `POST /api/ingest/{tenant_id}` (multipart file) → save to
+`STORAGE_DIR` → insert `documents` row (`processing`) → `ingest_document.delay()`
+→ worker runs `run_ingestion` → status flips to `indexed`/`failed`.
+
+| Endpoint | Auth | Purpose |
+|---|---|---|
+| POST `/api/ingest/{tenant_id}` | `X-API-Key` | upload → 202, status `processing` |
+| GET `/api/documents/{tenant_id}` | `X-API-Key` | list docs + status (dashboard poll) |
+
+**Chosen in onboarding:** extraction via **PyMuPDF + python-docx** (PDF/DOCX;
+CSV/TXT/MD via stdlib); chunking **1000 chars / 200 overlap**
+(`RecursiveCharacterTextSplitter`); **one Qdrant collection** with a
+`tenant_id` payload filter on every point (see `app/services/qdrant.py`).
+
+### Local testing (no Docker)
+- `pytest` covers the full pipeline with mocked embeddings/Qdrant on SQLite:
+  upload→enqueue, `indexed` on success, `failed` on error.
+- 13 unit tests total across Phases 1–3 all pass.
+
+### Live end-to-end (needs Redis + Qdrant + Postgres + OpenAI key)
+```bash
+# .env: OPENAI_API_KEY=sk-..., QDRANT_URL, DATABASE_URL, STORAGE_DIR
+docker compose up -d db qdrant redis                # infra
+docker compose up celery-worker                     # worker
+.venv/Scripts/python -m uvicorn app.main:app --reload
+# create tenant (Phase 2), then:
+curl -s -X POST localhost:8000/api/ingest/<tenant_id> \
+  -H 'X-API-Key: <api_key>' -F 'file=@./sample.txt'
+# poll until indexed:
+curl -s localhost:8000/api/documents/<tenant_id> -H 'X-API-Key: <api_key>'
+```
+
+The status `processing → indexed/failed` is polled by the dashboard (Phase 6).
+Scale model: **more Celery worker replicas = more ingestion throughput**,
+independent of the chat-serving API replicas.
+
+---
+
 ## Config reference
 
 All env vars are documented in [`.env.example`](.env.example). Key ones:

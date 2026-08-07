@@ -6,6 +6,7 @@
 # --- Web framework ---
 fastapi>=0.115
 uvicorn[standard]>=0.30
+python-multipart>=0.0.9  # multipart file uploads (POST /ingest)
 pydantic>=2.8
 pydantic-settings>=2.4
 
@@ -23,6 +24,14 @@ celery>=5.4
 
 # --- Migrations ---
 alembic>=1.13
+
+# --- Embeddings / vector store (Phase 3+) ---
+openai>=1.30
+
+# --- Document extraction (Phase 3) ---
+pymupdf>=1.24      # PDF text/layout extraction (import as `pymupdf`)
+python-docx>=1.1   # DOCX parsing
+langchain-text-splitters>=0.3  # RecursiveCharacterTextSplitter (narrow — no chains)
 
 # --- Dev / test ---
 pytest>=8.2

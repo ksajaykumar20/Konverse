@@ -36,8 +36,14 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     anthropic_api_key: str = ""
 
-    # ----- Vector sizing (Phase 3) -----
-    embedding_size: int = 1536  # OpenAI text-embedding-3-small
+    # ----- Document upload storage (Phase 3) -----
+    # Local disk for dev; in production point this at object storage and keep
+    # only the key in `documents.storage_path`. No schema change required.
+    storage_dir: str = "./storage"
+
+    # ----- Vector sizing / embedding (Phase 3) -----
+    embedding_model: str = "text-embedding-3-small"
+    embedding_size: int = 1536  # matches text-embedding-3-small
 
     model_config = SettingsConfigDict(
         env_file=".env",

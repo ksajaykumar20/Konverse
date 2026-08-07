@@ -7,14 +7,13 @@ Philosophy (applies from Phase 1 through production):
     GET /health rather than crashing at boot. Later phases wire real
     (pooled) clients here, still without blocking startup.
 """
-import time
 import uuid
 
 from fastapi import FastAPI
 
 from app.config import Settings, get_settings
 from app.lib.logging import setup_logging
-from app.routers import health, tenants
+from app.routers import health, ingest, tenants
 import app.models  # noqa: F401  (register all tables on Base.metadata)
 
 
@@ -42,6 +41,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(health.router, prefix="/api")
     app.include_router(tenants.router, prefix="/api")
+    app.include_router(ingest.router, prefix="/api")
 
     return app
 
