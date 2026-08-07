@@ -5,8 +5,8 @@ own documents; end users get answers grounded **only** in that tenant's data via
 a Retrieval-Augmented Generation (RAG) pipeline. Built to scale from one demo
 tenant to many concurrent tenants and users without a rewrite.
 
-> **Phase status:** 1 of 8 — runnable API + `/health` skeleton, Celery worker
-> stub, and a Docker Compose stack. See the bottom of this file for the roadmap.
+> **Phase status:** 4 of 8 — RAG retrieval + SSE streaming chat with caching
+> and a low-confidence fallback. See the bottom of this file for the roadmap.
 
 ---
 
@@ -195,6 +195,63 @@ independent of the chat-serving API replicas.
 
 ---
 
+## Phase 4 — RAG retrieval + streaming chat
+
+`POST /api/chat/{tenant_id}` grounds an answer **exclusively** in the tenant's
+own chunks and streams tokens over **Server-Sent Events** (`text/event-stream`),
+so no WebSocket/shared state is held across API replicas.
+
+**Flow:** auth (`X-API-Key`, foreign tenants → 404) → create/resume `ChatSession`
+→ log the user message → `retrieve()` (embed query via **Redis cache-first**, then
+search **Qdrant filtered to `tenant_id == <tenant>`** with `top_k=5`) → decide →
+stream.
+
+| SSE event | Payload |
+|---|---|
+| `session` | `session_id` (for the consumer to resume) |
+| `token` | one text delta |
+| `done` | final `text`, `was_answered` bool |
+
+**Decision branch** — threshold `min_score = 0.60`:
+- **≥ score:** build a grounded system prompt from the top chunk + tenant
+  `system_prompt`, stream Claude (`claude-sonnet-4-6`), persist the assistant
+  message with `was_answered=true` + `confidence = max chunk score`.
+- **below:** skip the LLM entirely, emit a fixed fallback ("I don't have that
+  information…"), persist `was_answered=false`. No token spend on garbage.
+
+**Caching:** embeddings are cached in Redis (key = `embed:{model}:{tenant_id}:
+{sha256(query)}`, 24 h TTL) so repeated questions skip re-embedding. **Retrieval
+results are not cached** — per-tenant, per-turn freshness wins over latency here.
+
+**Tenant isolation is query-level:** every Qdrant search carries a `tenant_id`
+`FieldCondition`, verified by a dedicated isolation test (two tenants, no cross-
+tenant vectors reachable regardless of phrasing).
+
+### Local testing (no Docker)
+- 17 unit tests total across Phases 1–4; chat tests mock retrieval + LLM and
+  assert: grounded streaming + persistence (`was_answered=true`), the
+  low-confidence branch **never calls the LLM**, retrieval carries the right
+  `tenant_id` filter, and `/history` returns the transcript.
+- `GET /api/chat/{tenant_id}/history/{session_id}` returns the session transcript.
+
+### Live end-to-end (needs Postgres + Redis + Qdrant + OpenAI + Anthropic keys)
+```bash
+# .env: OPENAI_API_KEY, ANTHROPIC_API_KEY, REDIS_URL, QDRANT_URL, DATABASE_URL
+docker compose up -d db qdrant redis && docker compose up celery-worker
+.venv/Scripts/python -m uvicorn app.main:app --reload
+# create tenant, ingest a doc (Phase 3), wait for status=indexed, then:
+curl -sN -X POST localhost:8000/api/chat/<tenant_id> \
+  -H 'X-API-Key: <api_key>' -H 'Content-Type: application/json' \
+  -d '{"message":"What do you sell?"}'
+#   -N keeps curl reading the SSE stream line-by-line as tokens arrive.
+```
+
+Scale model: chat is read-mostly and stateless, so **more API replicas = more
+concurrent chats**; ingestion stays on the worker pool. Claude keys are read per
+call (one client per request) so nothing is pinned to a loop or process.
+
+---
+
 ## Config reference
 
 All env vars are documented in [`.env.example`](.env.example). Key ones:
@@ -213,9 +270,9 @@ All env vars are documented in [`.env.example`](.env.example). Key ones:
 ## Roadmap (phases)
 
 1. ✅ Scaffolding & environment (this)
-2. Database schema + tenant management (SQLAlchemy, Alembic, API-key auth)
-3. Document ingestion pipeline (async, Celery: parse → chunk → embed → Qdrant)
-4. Retrieval + Chat (RAG) with SSE streaming, caching, low-confidence fallback
+2. ✅ Database schema + tenant management (SQLAlchemy, Alembic, API-key auth)
+3. ✅ Document ingestion pipeline (async, Celery: parse → chunk → embed → Qdrant)
+4. ✅ Retrieval + Chat (RAG) with SSE streaming, caching, low-confidence fallback
 5. Guardrails (regulated-industry interception) + Redis rate limiting
 6. Dashboard (Next.js + shadcn/ui)
 7. Embeddable vanilla-JS chat widget

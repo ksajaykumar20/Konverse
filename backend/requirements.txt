@@ -28,6 +28,9 @@ alembic>=1.13
 # --- Embeddings / vector store (Phase 3+) ---
 openai>=1.30
 
+# --- LLM (Phase 4+) ---
+anthropic>=0.40
+
 # --- Document extraction (Phase 3) ---
 pymupdf>=1.24      # PDF text/layout extraction (import as `pymupdf`)
 python-docx>=1.1   # DOCX parsing

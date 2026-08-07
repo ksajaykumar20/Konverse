@@ -45,6 +45,17 @@ class Settings(BaseSettings):
     embedding_model: str = "text-embedding-3-small"
     embedding_size: int = 1536  # matches text-embedding-3-small
 
+    # ----- LLM / retrieval (Phase 4) -----
+    anthropic_model: str = "claude-sonnet-4-6"
+    retrieval_top_k: int = 5
+    # Cosine similarity below this -> skip the LLM, emit the canned fallback.
+    retrieval_min_score: float = 0.60
+    llm_max_tokens: int = 1024
+
+    # ----- Caching (Phase 4) -----
+    # Per-tenant query-embedding cache TTL (seconds). 24h.
+    embedding_cache_ttl: int = 86400
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

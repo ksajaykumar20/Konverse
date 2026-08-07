@@ -13,7 +13,7 @@ from fastapi import FastAPI
 
 from app.config import Settings, get_settings
 from app.lib.logging import setup_logging
-from app.routers import health, ingest, tenants
+from app.routers import chat, health, ingest, tenants
 import app.models  # noqa: F401  (register all tables on Base.metadata)
 
 
@@ -42,6 +42,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(health.router, prefix="/api")
     app.include_router(tenants.router, prefix="/api")
     app.include_router(ingest.router, prefix="/api")
+    app.include_router(chat.router, prefix="/api")
 
     return app
 
