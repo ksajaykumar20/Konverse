@@ -99,6 +99,53 @@ python -m venv .venv && .venv/Scripts/python -m pip install -r requirements.txt
 > `--pool=solo --concurrency=1` if you run the worker on the host. The Docker
 > worker (Linux) uses `prefork` and needs no flags.
 
+### Fully local: no Docker, no keys (Phase 9)
+If you can't install Docker (and don't want to manage Postgres/Qdrant/Redis or
+sign up for provider keys), run the **entire** stack on one machine with zero
+containers and zero API keys. The backend replaces every external service with
+an in-process or on-disk local counterpart, selected via `backend/.env`:
+
+| Working piece | Production | Docker-free local |
+|---|---|---|
+| Relational store | Postgres | SQLite (`./konverse.db`) |
+| Vector store | Qdrant server | on-disk Qdrant (`./qdrant_local`) |
+| Embeddings | TEI / OpenAI | **fastembed** ONNX on-device |
+| LLM | Anthropic Claude | **local extractive** (cites top chunk) |
+| Celery / Redis | real broker + worker | eager, in-process |
+
+The committed template (`backend/.env.example`) documents every key for both
+profiles. To run locally:
+
+```bash
+cd backend
+python -m venv .venv && .venv/Scripts/python -m pip install -r requirements.txt \
+  fastembed onnxruntime
+cp .env.example .env          # already set for the local profile
+.venv/Scripts/python -m scripts.init_db     # create SQLite tables
+.venv/Scripts/python -m uvicorn app.main:app --port 8000
+```
+
+Then drive it end to end:
+```bash
+curl -s -X POST localhost:8000/api/tenants -H 'Content-Type: application/json' \
+  -d '{"name":"Acme","industry":"retail"}'        # -> api_key (sk_...)
+curl -s -X POST localhost:8000/api/ingest/<tenant_id> -H "X-API-Key: $KEY" \
+  -F 'file=@doc.pdf;type=application/pdf'          # waits a moment, flips to indexed
+curl -s -N -X POST localhost:8000/api/chat/<tenant_id> -H "X-API-Key: $KEY" \
+  -H 'Content-Type: application/json' -d '{"message":"what is the return policy?"}'
+```
+
+Notes for the local profile:
+- First embedding call downloads a small ONNX model on `fastembed`'s model cache.
+- Ingestion is a background in-process task (`CELERY_TASK_ALWAYS_EAGER=true`);
+  the dashboard polls `GET /documents` until status is `indexed`.
+- Answers are **extractive**: the chat response quotes the top retrieved chunk
+  verbatim (fully grounded, deterministic), and low-confidence questions fall
+  back to "I don't have that information". Flip `LLM_BACKEND=anthropic` + add
+  an `ANTHROPIC_API_KEY` for real generation.
+- `/api/health` reports the local stores as healthy; Redis (absent here) is
+  surfaced as down but every path **fails open**, so nothing is blocked.
+
 ### Celery smoke test (proves the worker picks up jobs)
 ```bash
 # In a python shell:

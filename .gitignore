@@ -58,3 +58,11 @@ desktop.ini
 
 # --- Konverse runtime artifacts ---
 storage/
+
+# --- Docker-free local stack (Phase 9) ---
+# SQLite data file + on-disk local Qdrant store produced by the no-Docker
+# profile. Recreate both freely with backend/scripts/init_db.py.
+*.db
+*.sqlite
+qdrant_data/
+qdrant_local/

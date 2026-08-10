@@ -131,7 +131,9 @@ async def chat(
         )
         parts: list[str] = []
         yield _sse({"type": "session", "session_id": str(session.id)})
-        async for delta in llm.stream_answer(settings, system_prompt, body.message):
+        async for delta in llm.stream_answer(
+            settings, system_prompt, body.message, chunks=result.chunks
+        ):
             parts.append(delta)
             yield _sse({"type": "token", "text": delta})
         answer = "".join(parts)

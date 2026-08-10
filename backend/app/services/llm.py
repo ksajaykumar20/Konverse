@@ -1,26 +1,63 @@
-"""Anthropic Claude streaming for the chat path (claude-sonnet-4-6).
+"""LLM backends for the chat path: Claude streaming or local extractive.
 
-The client is created per call so it binds to the caller's asyncio loop — the
-API runs one loop per process; correctness here matters for the Celery worker
-too, which spins a fresh loop per task.
+The `local` backend is the no-key, no-Docker fallback: instead of generating
+new text, it GROUNDS the answer directly in the retrieved source by returning
+the top-matching chunk verbatim, plus a short canned framing line. There is no
+model, no API key, and nothing is streamed through a remote — every token is
+deterministic and attributable (the "answer" is literally a cited passage).
 """
 import logging
-
-from anthropic import AsyncAnthropic
 
 from app.config import Settings
 
 logger = logging.getLogger(__name__)
 
 
+def local_fallback_answer(chunks: list[dict]) -> str:
+    """Build a cited, extractive answer from the top retrieved chunk.
+
+    Used when `llm_backend == "local"`. Returns the highest-scoring chunk's text
+    wrapped in a short attribution header so consumers see exactly which passage
+    the answer came from. Empty if there are no chunks.
+    """
+    if not chunks:
+        return "I don't have enough information in my sources to answer that."
+    top = chunks[0]
+    source = top.get("text", "").strip()
+    if not source:
+        return "I don't have enough information in my sources to answer that."
+    score = float(top.get("score") or 0.0)
+    return f'Based on my sources, here is the relevant passage:\n\n"{source}"'
+
+
 async def stream_answer(
-    settings: Settings, system_prompt: str, user_message: str
+    settings: Settings,
+    system_prompt: str,
+    user_message: str,
+    chunks: list[dict] | None = None,
 ) -> "AsyncGenerator[str, None]":
-    """Yield text deltas from Claude for the grounded turn."""
+    """Yield text deltas for the grounded turn.
+
+    Backend is selected by `settings.llm_backend`:
+      * "local" — extractive, no key. `chunks` must be the retrieved passages
+        (passed from the chat router); yields the cited answer as one delta.
+      * "anthropic" — streams Claude deltas (needs ANTHROPIC_API_KEY).
+    """
+    if settings.llm_backend == "local":
+        yield local_fallback_answer(chunks or [])
+        return
+
+    if settings.llm_backend != "anthropic":
+        raise ValueError(
+            f"Unsupported llm_backend: {settings.llm_backend!r}"
+        )
+
     if not settings.anthropic_api_key:
         raise RuntimeError(
             "ANTHROPIC_API_KEY is not set — configure it to chat."
         )
+
+    from anthropic import AsyncAnthropic
 
     client = AsyncAnthropic(api_key=settings.anthropic_api_key)
     messages = [{"role": "user", "content": user_message}]

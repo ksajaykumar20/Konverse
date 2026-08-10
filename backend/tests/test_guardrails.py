@@ -176,7 +176,7 @@ async def test_chat_passes_when_guardrail_skips(client, monkeypatch):
         )
     monkeypatch.setattr("app.services.retrieval.retrieve", fake_retrieve)
 
-    async def fake_stream(settings, system_prompt, user_message):
+    async def fake_stream(settings, system_prompt, user_message, chunks=None):
         yield "answered normally"
     monkeypatch.setattr("app.services.llm.stream_answer", fake_stream)
 

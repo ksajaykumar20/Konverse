@@ -36,6 +36,14 @@ async def _create_tenant(client: AsyncClient) -> dict:
 async def test_ingest_upload_enqueues_and_lists(client, monkeypatch):
     t = await _create_tenant(client)
 
+    # The router reads the GLOBAL get_settings() for the eager flag. Pin it OFF
+    # here so this test asserts the broker/Celery path regardless of any local
+    # `.env` that sets CELERY_TASK_ALWAYS_EAGER=true.
+    monkeypatch.setattr(
+        "app.routers.ingest.get_settings",
+        lambda: Settings(celery_task_always_eager=False),
+    )
+
     calls: list[str] = []
     monkeypatch.setattr(
         "app.routers.ingest.ingest_task",

@@ -30,13 +30,12 @@ class Settings(BaseSettings):
     # ----- Redis (cache + rate limiting + Celery broker) -----
     redis_url: str = "redis://localhost:6379/0"
 
-    # ----- Qdrant (vector store) -----
-    qdrant_url: str = "http://localhost:6333"
-    qdrant_collection: str = "konverse_chunks"
-
     # ----- Celery -----
     celery_broker_url: str = "redis://localhost:6379/1"
     celery_result_backend: str = "redis://localhost:6379/2"
+    # When true, Celery runs tasks in-process (no broker/worker). Used for the
+    # local no-Docker profile so ingestion completes without Redis.
+    celery_task_always_eager: bool = False
 
     # ----- Providers (used from Phase 3 onward) -----
     openai_api_key: str = ""
@@ -47,18 +46,36 @@ class Settings(BaseSettings):
     # only the key in `documents.storage_path`. No schema change required.
     storage_dir: str = "./storage"
 
-    # ----- Vector sizing / embedding (Phase 3; backend pluggable from Phase 8) -----
-    # Backend: "tei" (default — an OpenAI-compatible TEI/HF endpoint) or
-    # "openai" (fallback). The model string is the model the backend serves;
-    # embedding_size must match that model's output dimension (Qdrant collection
-    # dimension is fixed at creation, so changing model usually means a new
-    # collection + re-ingest — see README).
+    # ----- Vector store / embedding (backend; pluggable from Phase 8) -----
+    # Embedding backend:
+    #   "tei"   (default) — an OpenAI-compatible TEI/HF endpoint serving an
+    #           open-source model (default BAAI/bge-base-en-v1.5, 768-d).
+    #   "openai"           — OpenAI /v1/embeddings drop-in fallback.
+    #   "local"            — on-device ONNX via `fastembed`, NO provider key and
+    #           NO server needed. Embeds run in a thread (they are CPU-bound).
+    # The model string is what the backend serves; embedding_size must match its
+    # output dimension (Qdrant collection dimension is fixed at creation, so
+    # changing model usually means a new collection + re-ingest — see README).
     embedding_backend: str = "tei"
     tei_url: str = "http://localhost:8080"  # TEI / OpenAI-compatible endpoint
     embedding_model: str = "BAAI/bge-base-en-v1.5"
     embedding_size: int = 768  # matches bge-base-en-v1.5 (768-d)
 
+    # ----- Qdrant (vector store) -----
+    # In addition to an HTTP server URL, two local (no-Docker) modes are
+    # recognized so the whole stack can run on one box without a container:
+    #   "./some_dir"  -> on-disk local Qdrant (persists across restarts).
+    #   ":memory:"    -> in-process, wiped on restart (a singleton is shared so
+    #                    points survive across the per-call client opens).
+    qdrant_url: str = "http://localhost:6333"
+    qdrant_collection: str = "konverse_chunks"
+
     # ----- LLM / retrieval (Phase 4) -----
+    # LLM backend:
+    #   "anthropic" (default) — Claude streaming (needs ANTHROPIC_API_KEY).
+    #   "local" is the no-key fallback: ground the answer EXTRACTION on the
+    #           top retrieved chunk and cite it verbatim. No model, no key.
+    llm_backend: str = "anthropic"
     anthropic_model: str = "claude-sonnet-4-6"
     retrieval_top_k: int = 5
     # Cosine similarity below this -> skip the LLM, emit the canned fallback.

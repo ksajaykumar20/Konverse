@@ -48,7 +48,7 @@ async def test_sessions_list_excludes_foreign_tenants(client, monkeypatch):
             chunks=[{"text": "c", "score": 0.9}], max_score=0.9
         )
 
-    async def fake_stream(settings, system_prompt, user_message):
+    async def fake_stream(settings, system_prompt, user_message, chunks=None):
         yield "hi"
 
     monkeypatch.setattr("app.services.retrieval.retrieve", fake_retrieve)
@@ -91,7 +91,7 @@ async def test_grounded_chat_streams_and_logs(client, monkeypatch):
             max_score=0.9,
         )
 
-    async def fake_stream(settings, system_prompt, user_message):
+    async def fake_stream(settings, system_prompt, user_message, chunks=None):
         yield "Hello "
         yield "world"
 
@@ -136,7 +136,7 @@ async def test_low_confidence_fallback_skips_llm(client, monkeypatch):
 
     called = {"n": 0}
 
-    async def boom_stream(settings, system_prompt, user_message):
+    async def boom_stream(settings, system_prompt, user_message, chunks=None):
         called["n"] += 1
         yield "should not happen"
 

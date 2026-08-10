@@ -30,6 +30,9 @@ def create_celery() -> Celery:
         broker_connection_retry_on_startup=True,
         timezone="UTC",
         enable_utc=True,
+        # Local (no-Docker, no-Redis) profile: run tasks in-process so the app
+        # works without a broker. Off normally so production uses the worker.
+        task_always_eager=settings.celery_task_always_eager,
     )
     return app
 

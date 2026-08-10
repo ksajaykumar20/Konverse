@@ -7,11 +7,10 @@ isolation test).
 """
 from dataclasses import dataclass
 
-from qdrant_client import AsyncQdrantClient
 from qdrant_client.models import FieldCondition, Filter, MatchValue
 
 from app.config import Settings
-from app.services import cache, embeddings
+from app.services import cache, embeddings, qdrant
 
 
 @dataclass
@@ -37,8 +36,12 @@ async def _embed_query(
 async def _search_qdrant(
     settings: Settings, tenant_id: str, query_vector: list[float]
 ):
-    """Raw Qdrant search scoped to one tenant. Extracted for testability."""
-    client = AsyncQdrantClient(url=settings.qdrant_url)
+    """Raw Qdrant search scoped to one tenant. Kept for testability.
+
+    Uses the shared `qdrant._client` so local (on-disk / :memory:) modes are
+    hit correctly instead of a hard-coded HTTP URL.
+    """
+    client = qdrant._client(settings)
     try:
         qfilter = Filter(
             must=[
@@ -47,17 +50,20 @@ async def _search_qdrant(
                 )
             ]
         )
-        result = await client.search(
+        # qdrant-client >=1.11 renamed the top-level `.search()` to
+        # `.query_points()` (same purpose, different wrapper). It returns a
+        # `QueryResponse` with `.points`. Accept both shapes defensively in
+        # case the dependency is pinned to an older release.
+        response = await client.query_points(
             collection_name=settings.qdrant_collection,
-            query_vector=query_vector,
+            query=query_vector,
             query_filter=qfilter,
             limit=settings.retrieval_top_k,
             with_payload=True,
         )
-        # qdrant-client 1.x returns a list; newer wraps in a result object.
-        return result.points if hasattr(result, "points") else result
+        return response.points if hasattr(response, "points") else response
     finally:
-        await client.close()
+        await qdrant.close_client(client, settings)
 
 
 async def retrieve(

@@ -46,5 +46,10 @@ async def set_cached_embedding(
             json.dumps(vector),
             ex=settings.embedding_cache_ttl,
         )
+    except Exception:  # noqa: BLE001 — a cache-write failure never blocks chat
+        pass
     finally:
-        await r.aclose()
+        try:
+            await r.aclose()
+        except Exception:  # noqa: BLE001 — even teardown must not raise
+            pass
