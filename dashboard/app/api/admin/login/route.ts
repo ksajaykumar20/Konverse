@@ -43,7 +43,12 @@ export async function POST(req: NextRequest) {
   store.set(ADMIN_SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    // `next start` sets NODE_ENV=production even on http://localhost. Base
+    // this on the actual request transport so a local production preview can
+    // retain its session, while HTTPS deployments remain protected.
+    secure:
+      req.nextUrl.protocol === "https:" ||
+      req.headers.get("x-forwarded-proto") === "https",
     maxAge: ADMIN_SESSION_MAX_AGE,
     path: "/",
   });
